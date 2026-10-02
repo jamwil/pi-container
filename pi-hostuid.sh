@@ -17,7 +17,11 @@
 # the host or from inside a running container. It inherits your host uid,
 # matching the container user.
 #
-# Usage: pi-hostuid.sh [extra docker args...]   --rebuild forces a rebuild
+# Usage: pi-hostuid.sh [pi args...]   --rebuild forces a rebuild
+# Trailing args are passed to pi, so its subcommands work naturally:
+#   ./pi-hostuid.sh install npm:@upstash/context7-pi
+#   ./pi-hostuid.sh config
+#   ./pi-hostuid.sh list
 
 set -eu
 
@@ -61,5 +65,5 @@ exec docker run --rm -it \
   -v "$workspace:/workspace" \
   -v "$data_dir:/home/node/.pi" \
   --env-file "$script_dir/pi.env" \
-  "$@" \
-  "$image"
+  "$image" \
+  "$@"

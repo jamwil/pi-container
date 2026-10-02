@@ -14,7 +14,11 @@
 # bind-mounted from ./pi-data next to this script, so you can edit it from
 # the host or from inside a running container.
 #
-# Usage: pi-desktop.sh [extra docker args...]   --rebuild forces a rebuild
+# Usage: pi-desktop.sh [pi args...]   --rebuild forces a rebuild
+# Trailing args are passed to pi, so its subcommands work naturally:
+#   ./pi-desktop.sh install npm:@upstash/context7-pi
+#   ./pi-desktop.sh config
+#   ./pi-desktop.sh list
 
 set -eu
 
@@ -57,5 +61,5 @@ exec docker run --rm -it \
   -v "$workspace:/workspace" \
   -v "$data_dir:/home/node/.pi" \
   --env-file "$script_dir/pi.env" \
-  "$@" \
-  "$image"
+  "$image" \
+  "$@"
