@@ -19,12 +19,15 @@ FROM node:24-bookworm-slim
 
 # Pin the agent version; update deliberately via:
 #   docker build --build-arg PI_VERSION=1.1.0 .
-ARG PI_VERSION=1.0.0
+ARG PI_VERSION=1.3.0
 
 # Avoid interactive prompts during apt-get.
 ARG DEBIAN_FRONTEND=noninteractive
 # Prevent npm from writing update-notifier cache files at runtime.
 ENV NPM_CONFIG_UPDATE_NOTIFIER=false
+ENV PI_OFFLINE=true
+ENV PI_SKIP_VERSION_CHECK=true
+ENV PI_TELEMETRY=false
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends bash ca-certificates git ripgrep \
