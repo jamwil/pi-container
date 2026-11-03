@@ -19,7 +19,7 @@ FROM node:24-bookworm-slim
 
 # Pin the agent version; update deliberately via:
 #   docker build --build-arg PI_VERSION=1.1.0 .
-ARG PI_VERSION=1.3.0
+ARG PI_VERSION=1.5.0
 
 # Avoid interactive prompts during apt-get.
 ARG DEBIAN_FRONTEND=noninteractive
