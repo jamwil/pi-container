@@ -21,6 +21,12 @@ FROM node:24-bookworm-slim
 #   docker build --build-arg PI_VERSION=1.1.0 .
 ARG PI_VERSION=1.6.0
 
+# Pin direnv (workspace env loader); apt's bookworm package (2.32) predates
+# support for plain .env files, so take the upstream static binary instead.
+#   docker build --build-arg DIRENV_VERSION=v2.38.2 .
+ARG DIRENV_VERSION=v2.38.2
+ARG DIRENV_SHA256=148820a187930d36ca6a204504e5cdb30d8396cd1a97e64c3b3f10d793c11247
+
 # Avoid interactive prompts during apt-get.
 ARG DEBIAN_FRONTEND=noninteractive
 # Prevent npm from writing update-notifier cache files at runtime.
@@ -38,6 +44,25 @@ RUN apt-get update \
     # Fail the build if anything somehow kept its privileged bits.
     && ! find / -xdev -perm /6000 -type f | grep -q .
 
+# direnv lets a workspace carry its own environment: a .envrc or plain .env
+# at the project root is loaded into the agent's environment at container
+# start (see pi-entrypoint.sh). --checksum pins the binary so the URL fetch
+# can't silently change under us.
+ADD --checksum=sha256:${DIRENV_SHA256} \
+    https://github.com/direnv/direnv/releases/download/${DIRENV_VERSION}/direnv.linux-amd64 \
+    /usr/local/bin/direnv
+RUN chmod 0755 /usr/local/bin/direnv
+
+# direnv ignores plain .env files unless load_dotenv is enabled. Bake the
+# config root-owned outside $HOME - the runtime mounts a tmpfs over
+# /home/node, so anything under it in the image would be hidden.
+# Empty DIRENV_LOG_FORMAT silences the 'direnv: loading ...' status line
+# before pi starts (errors still print).
+ENV DIRENV_CONFIG=/etc/direnv
+ENV DIRENV_LOG_FORMAT=
+RUN mkdir -p /etc/direnv \
+    && printf 'load_dotenv = true\n' > /etc/direnv/direnv.toml
+
 # Install pi globally as root. --ignore-scripts is essential hardening.
 # --cache keeps npm's cache out of /root (and therefore out of a layer).
 RUN npm install -g --ignore-scripts --no-audit --no-fund --cache /tmp/npm-cache \
@@ -48,6 +73,10 @@ RUN npm install -g --ignore-scripts --no-audit --no-fund --cache /tmp/npm-cache 
 # Set HOME explicitly (the early root layers default it to /root).
 ENV HOME=/home/node
 
+# Entrypoint wrapper: applies the workspace's .envrc/.env via direnv before
+# handing off to pi. Installed root-owned before the privilege drop.
+COPY --chmod=755 pi-entrypoint.sh /usr/local/bin/pi-entrypoint
+
 RUN mkdir -p /workspace \
     && chown -R node:node /home/node /workspace
 
@@ -56,7 +85,7 @@ RUN mkdir -p /workspace \
 USER 1000:1000
 WORKDIR /workspace
 
-ENTRYPOINT ["pi"]
+ENTRYPOINT ["pi-entrypoint"]
 
 # -----------------------------------------------------------------------------
 # Recommended hardened invocation (image default user, uid 1000):
@@ -98,6 +127,13 @@ ENTRYPOINT ["pi"]
 #     maps ownership for you, so the uid=1000 invocation above is fine.
 #     If you run Docker itself as root (host uid 0), keep the image default
 #     (1000) instead and chown your workspace on the host.
+#   * Per-project env via direnv: a .envrc (direnv syntax) or plain .env
+#     (KEY=VALUE lines) at the workspace root is auto-loaded into the
+#     session at startup - no --env-file needed for project-specific vars.
+#     The launch scripts' ./pi.env (--env-file) still applies on top; use
+#     it for provider keys you don't want to keep in the workspace.
+#     NOTE: .envrc/.env content is evaluated as shell code at container
+#     start - only do this in workspaces you trust, and never commit secrets.
 #   * The tmpfs on /home/node makes agent state ephemeral. To persist pi's
 #     config/skills/sessions, either mount a named volume over /home/node
 #     (a named volume inherits /home/node's image ownership on first use, so

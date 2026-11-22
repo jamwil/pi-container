@@ -10,7 +10,9 @@
 # The workspace mounted into the container is your CURRENT directory, so you
 # can e.g.:  cd ~/code/myproject && /path/to/pi-hostuid.sh
 # The image and ./pi.env (OPENROUTER_API_KEY etc.) are found next to this
-# script.
+# script. pi.env is optional if your workspace carries its own environment:
+# a .envrc or plain .env at its root is auto-loaded by direnv (see
+# pi-entrypoint.sh); secrets there travel with the project dir.
 #
 # Persistent pi state (config, skills, sessions - everything in ~/.pi) is
 # bind-mounted from ./pi-data next to this script, so you can edit it from
@@ -42,10 +44,15 @@ mkdir -p "$data_dir"
 
 image=pi-agent
 
-[ -f "$script_dir/pi.env" ] || {
-  echo "error: $script_dir/pi.env not found (create it: OPENROUTER_API_KEY=...)" >&2
-  exit 1
-}
+# Provider env: pi.env next to this script, the workspace's own
+# .envrc/.env (direnv), or both. pi.env is applied first (docker --env-file),
+# then direnv loads the workspace file - so the workspace wins on conflicts.
+env_args=""
+if [ -f "$script_dir/pi.env" ]; then
+  env_args="--env-file $script_dir/pi.env"
+else
+  echo "note: $script_dir/pi.env not found; using workspace env only" >&2
+fi
 
 if [ "${1:-}" = "--rebuild" ]; then
   shift
@@ -64,6 +71,6 @@ exec docker run --rm -it \
   --tmpfs /home/node:rw,size=64m,uid="$(id -u)",gid="$(id -g)",mode=0700 \
   -v "$workspace:/workspace" \
   -v "$data_dir:/home/node/.pi" \
-  --env-file "$script_dir/pi.env" \
+  $env_args \
   "$image" \
   "$@"
