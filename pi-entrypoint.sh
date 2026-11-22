@@ -17,6 +17,10 @@
 
 set -eu
 
+# DuckDB spills large sorts to its temp_directory instead of /tmp (small
+# tmpfs). Point it at the workspace; duckdb creates/cleans the dir itself.
+printf "SET temp_directory = '/workspace/.duckdb-tmp';\n" > "$HOME/.duckdbrc"
+
 rc=/workspace/.envrc
 [ -f "$rc" ] || rc=/workspace/.env
 

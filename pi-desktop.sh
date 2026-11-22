@@ -64,7 +64,7 @@ exec docker run --rm -it \
   --init \
   --read-only \
   --tmpfs /tmp:rw,size=64m,exec \
-  --tmpfs /home/node:rw,size=64m,uid=1000,gid=1000,mode=0700 \
+  --tmpfs /home/node:rw,size=256m,uid=1000,gid=1000,mode=0700 \
   -v "$workspace:/workspace" \
   -v "$data_dir:/home/node/.pi" \
   $env_args \

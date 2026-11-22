@@ -36,13 +36,18 @@ ENV PI_SKIP_VERSION_CHECK=true
 ENV PI_TELEMETRY=false
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends bash ca-certificates git ripgrep \
+    && apt-get install -y --no-install-recommends bash ca-certificates curl git ripgrep \
     && rm -rf /var/lib/apt/lists/* \
     # Nothing inside this container ever needs to change uid/gid, so strip
     # all setuid/setgid bits. Removes su, mount, umount, passwd, chsh, ...
     && find / -xdev -perm /6000 -type f -exec chmod a-s {} + \
     # Fail the build if anything somehow kept its privileged bits.
     && ! find / -xdev -perm /6000 -type f | grep -q .
+
+# Pin the DuckDB CLI so the agent can run local analytical SQL directly
+# against parquet/csv/json/sqlite files in the workspace (no database server).
+#   docker build --build-arg DUCKDB_VERSION=v2.0.1 .
+ARG DUCKDB_VERSION=v2.0.1
 
 # direnv lets a workspace carry its own environment: a .envrc or plain .env
 # at the project root is loaded into the agent's environment at container
@@ -52,6 +57,25 @@ ADD --checksum=sha256:${DIRENV_SHA256} \
     https://github.com/direnv/direnv/releases/download/${DIRENV_VERSION}/direnv.linux-amd64 \
     /usr/local/bin/direnv
 RUN chmod 0755 /usr/local/bin/direnv
+
+# DuckDB CLI so the agent can run local analytical SQL directly against
+# parquet/csv/json/sqlite files in the workspace (no database server).
+# Unlike direnv (a static binary), the duckdb CLI is glibc-linked and
+# arch-specific, so pick the tarball matching the build platform and verify
+# its checksum. TARGETARCH is the automatic build arg from --platform.
+ARG TARGETARCH
+RUN set -eu \
+    && case "${TARGETARCH}" in \
+         amd64) DUCKDB_SHA256=b676268be4d39e4e41a904442c9796c9914e645cc085c7505f048f2c992b5eca ;; \
+         arm64) DUCKDB_SHA256=84e37891fcc45c887e30220f51a4914995cd8174139e87f8efd311ac83c956a7 ;; \
+         *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
+       esac \
+    && curl -fsSL -o /tmp/duckdb.tar.gz \
+         https://github.com/duckdb/duckdb/releases/download/${DUCKDB_VERSION}/duckdb-cli-linux-${TARGETARCH}.tar.gz \
+    && echo "${DUCKDB_SHA256}  /tmp/duckdb.tar.gz" | sha256sum -c - \
+    && tar -xzf /tmp/duckdb.tar.gz -C /usr/local/bin \
+    && chmod 0755 /usr/local/bin/duckdb \
+    && rm /tmp/duckdb.tar.gz
 
 # direnv ignores plain .env files unless load_dotenv is enabled. Bake the
 # config root-owned outside $HOME - the runtime mounts a tmpfs over
@@ -98,7 +122,7 @@ ENTRYPOINT ["pi-entrypoint"]
 #     --init \                            # proper PID 1 / signal handling
 #     --read-only \                       # immutable root filesystem
 #     --tmpfs /tmp:rw,size=64m,exec \      # scratch space (node compile cache, ...)
-#     --tmpfs /home/node:rw,size=64m,uid=1000,gid=1000,mode=0700 \  # $HOME/.pi
+#     --tmpfs /home/node:rw,size=256m,uid=1000,gid=1000,mode=0700 \  # $HOME/.pi + duckdb extensions
 #     -v "$PWD:/workspace" \              # your project; the only persistent rw mount
 #     --env-file ./pi.env \                # OPENROUTER_API_KEY etc. (never bake secrets in)
 #     pi-agent
@@ -116,7 +140,7 @@ ENTRYPOINT ["pi-entrypoint"]
 #     --user "$(id -u):$(id -g)" \
 #     --cap-drop=ALL --security-opt=no-new-privileges --init --read-only \
 #     --tmpfs /tmp:rw,size=64m,exec \
-#     --tmpfs /home/node:rw,size=64m,uid="$(id -u)",gid="$(id -g)",mode=0700 \
+#     --tmpfs /home/node:rw,size=256m,uid="$(id -u)",gid="$(id -g)",mode=0700 \
 #     -v "$PWD:/workspace" --env-file ./pi.env pi-agent
 #
 # Notes:
