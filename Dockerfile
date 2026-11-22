@@ -35,8 +35,13 @@ ENV PI_OFFLINE=true
 ENV PI_SKIP_VERSION_CHECK=true
 ENV PI_TELEMETRY=false
 
+# python3 lets the agent run ad-hoc analysis/scripts against workspace files.
+# Debian only ships a 'python3' binary; symlink 'python' -> 'python3' in
+# /usr/local/bin (earlier in PATH than /usr/bin) so scripts and the agent
+# can invoke plain 'python'.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends bash ca-certificates curl git ripgrep \
+    && apt-get install -y --no-install-recommends bash ca-certificates curl git python3 ripgrep \
+    && ln -s /usr/bin/python3 /usr/local/bin/python \
     && rm -rf /var/lib/apt/lists/* \
     # Nothing inside this container ever needs to change uid/gid, so strip
     # all setuid/setgid bits. Removes su, mount, umount, passwd, chsh, ...
